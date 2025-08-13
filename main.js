@@ -5,7 +5,7 @@ import { UV_COORDS } from "./uv_coords.js"; // 468 items of [u,v] in [0..1]
 
 const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
 
-const TEMPLATE_SRC = "./mesh_map.jpg"; // <- your fixed template
+const TEMPLATE_SRC = "./mesh_map.jpg";
 
 const demosSection = document.getElementById("demos");
 const imageBlendShapes = document.getElementById("image-blend-shapes");
@@ -16,15 +16,19 @@ let runningMode = "IMAGE";
 let webcamRunning = false;
 const videoWidth = 480;
 
+// set true if your webcam/canvas is mirrored via CSS (e.g. rotateY(180deg))
+const MIRROR_VIDEO = true;
+
 // mask state
 const maskInput = document.getElementById("maskInput");
 const maskStatus = document.getElementById("maskStatus");
 let maskImg = null;
 
 // template state (fixed)
-let templateImg = null;           // mesh_map.jpg
-let templateSize = { w: 0, h: 0 }; // pixel size
-let srcPts = null;                // 468 source points in pixels computed from UV_COORDS
+let templateImg = null;
+let templateSize = { w: 0, h: 0 };
+let srcPts = null;          // normal UV->px
+let srcPtsFlipped = null;   // flipped horizontally
 
 // ---------- load model ----------
 (async () => {
@@ -50,12 +54,17 @@ let srcPts = null;                // 468 source points in pixels computed from U
     img.onload = () => {
         templateImg = img;
         templateSize = { w: img.naturalWidth, h: img.naturalHeight };
-        // build source pixel points from UVs (u,v in [0..1] -> pixels)
+
+        // normal UVs
         srcPts = UV_COORDS.map(([u, v]) => ({
-            x: (1 - u) * templateSize.w,
-            y: v * templateSize.h
+            x: u * templateSize.w,
+            y: v * templateSize.h,
         }));
-        // (Optional) you can draw template for debugging if needed
+        // flipped horizontally (for mirrored video)
+        srcPtsFlipped = UV_COORDS.map(([u, v]) => ({
+            x: (1 - u) * templateSize.w,
+            y: v * templateSize.h,
+        }));
     };
     img.onerror = () => console.error("Failed to load template:", TEMPLATE_SRC);
     img.src = TEMPLATE_SRC;
@@ -78,36 +87,72 @@ if (maskInput) {
 }
 
 // ---------- helpers ----------
-function lmkPx(lmk, W, H) { return { x: lmk.x * W, y: lmk.y * H }; }
+function lmkPx(lmk, W, H) {
+    return { x: lmk.x * W, y: lmk.y * H };
+}
 
 // Affine transform from triangle (src->dst) into canvas setTransform
 function setTriTransform(ctx, src, dst) {
-    const [s0, s1, s2] = src, [d0, d1, d2] = dst;
-    const denom = (s0.x * (s1.y - s2.y) + s1.x * (s2.y - s0.y) + s2.x * (s0.y - s1.y));
+    const [s0, s1, s2] = src,
+        [d0, d1, d2] = dst;
+    const denom =
+        s0.x * (s1.y - s2.y) +
+        s1.x * (s2.y - s0.y) +
+        s2.x * (s0.y - s1.y);
     if (Math.abs(denom) < 1e-8) return false;
 
-    const a11 = (d0.x * (s1.y - s2.y) + d1.x * (s2.y - s0.y) + d2.x * (s0.y - s1.y)) / denom;
-    const a12 = (d0.x * (s2.x - s1.x) + d1.x * (s0.x - s2.x) + d2.x * (s1.x - s0.x)) / denom;
-    const a13 = (d0.x * (s1.x * s2.y - s2.x * s1.y) + d1.x * (s2.x * s0.y - s0.x * s2.y) + d2.x * (s0.x * s1.y - s1.x * s0.y)) / denom;
+    const a11 =
+        (d0.x * (s1.y - s2.y) +
+            d1.x * (s2.y - s0.y) +
+            d2.x * (s0.y - s1.y)) /
+        denom;
+    const a12 =
+        (d0.x * (s2.x - s1.x) +
+            d1.x * (s0.x - s2.x) +
+            d2.x * (s1.x - s0.x)) /
+        denom;
+    const a13 =
+        (d0.x * (s1.x * s2.y - s2.x * s1.y) +
+            d1.x * (s2.x * s0.y - s0.x * s2.y) +
+            d2.x * (s0.x * s1.y - s1.x * s0.y)) /
+        denom;
 
-    const a21 = (d0.y * (s1.y - s2.y) + d1.y * (s2.y - s0.y) + d2.y * (s0.y - s1.y)) / denom;
-    const a22 = (d0.y * (s2.x - s1.x) + d1.y * (s0.x - s2.x) + d2.y * (s1.x - s0.x)) / denom;
-    const a23 = (d0.y * (s1.x * s2.y - s2.x * s1.y) + d1.y * (s2.x * s0.y - s0.x * s2.y) + d2.y * (s0.x * s1.y - s1.x * s0.y)) / denom;
+    const a21 =
+        (d0.y * (s1.y - s2.y) +
+            d1.y * (s2.y - s0.y) +
+            d2.y * (s0.y - s1.y)) /
+        denom;
+    const a22 =
+        (d0.y * (s2.x - s1.x) +
+            d1.y * (s0.x - s2.x) +
+            d2.y * (s1.x - s0.x)) /
+        denom;
+    const a23 =
+        (d0.y * (s1.x * s2.y - s2.x * s1.y) +
+            d1.y * (s2.x * s0.y - s0.x * s2.y) +
+            d2.y * (s0.x * s1.y - s1.x * s0.y)) /
+        denom;
 
     ctx.setTransform(a11, a21, a12, a22, a13, a23);
     return true;
 }
 
 // Warp the mask across the whole face using TRIANGULATION
-function drawWarpedMask(ctx, dstLmks) {
+function drawWarpedMask(ctx, dstLmks, useFlipped = false) {
     if (!maskImg || !srcPts || !dstLmks) return;
 
-    const W = ctx.canvas.width, H = ctx.canvas.height;
+    const S = useFlipped ? srcPtsFlipped : srcPts;
+    const W = ctx.canvas.width,
+        H = ctx.canvas.height;
 
     for (let i = 0; i < TRIANGULATION.length; i += 3) {
-        const i0 = TRIANGULATION[i], i1 = TRIANGULATION[i + 1], i2 = TRIANGULATION[i + 2];
+        const i0 = TRIANGULATION[i],
+            i1 = TRIANGULATION[i + 1],
+            i2 = TRIANGULATION[i + 2];
 
-        const s0 = srcPts[i0], s1 = srcPts[i1], s2 = srcPts[i2];
+        const s0 = S[i0],
+            s1 = S[i1],
+            s2 = S[i2];
 
         const d0 = lmkPx(dstLmks[i0], W, H);
         const d1 = lmkPx(dstLmks[i1], W, H);
@@ -122,7 +167,6 @@ function drawWarpedMask(ctx, dstLmks) {
         ctx.clip();
 
         if (setTriTransform(ctx, [s0, s1, s2], [d0, d1, d2])) {
-            // draw your mask image; only the clipped triangle shows
             ctx.drawImage(maskImg, 0, 0, templateSize.w, templateSize.h);
         }
         ctx.restore();
@@ -171,11 +215,13 @@ async function handleClick(event) {
 
     if (faceLandmarkerResult?.faceLandmarks) {
         for (const dstLmks of faceLandmarkerResult.faceLandmarks) {
-            // (optional) draw mesh
-            drawingUtils.drawConnectors(dstLmks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
-
-            // warp mask
-            drawWarpedMask(ctx, dstLmks);
+            drawingUtils.drawConnectors(
+                dstLmks,
+                FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+                { color: "#C0C0C070", lineWidth: 1 }
+            );
+            // images are NOT mirrored -> use normal UVs
+            drawWarpedMask(ctx, dstLmks, /*useFlipped=*/false);
         }
     }
     drawBlendShapes(imageBlendShapes, faceLandmarkerResult?.faceBlendshapes || []);
@@ -203,7 +249,9 @@ function enableCam() {
     if (!faceLandmarker) return;
 
     webcamRunning = !webcamRunning;
-    document.getElementById("webcamButton").innerText = webcamRunning ? "DISABLE PREDICTIONS" : "ENABLE WEBCAM";
+    document.getElementById("webcamButton").innerText = webcamRunning
+        ? "DISABLE PREDICTIONS"
+        : "ENABLE WEBCAM";
 
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
         video.srcObject = stream;
@@ -238,10 +286,13 @@ async function predictWebcam() {
 
     if (results?.faceLandmarks) {
         for (const dstLmks of results.faceLandmarks) {
-            // (optional) draw mesh
-            videoDrawingUtils.drawConnectors(dstLmks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
-            // warp mask
-            drawWarpedMask(canvasCtx, dstLmks);
+            videoDrawingUtils.drawConnectors(
+                dstLmks,
+                FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+                { color: "#C0C0C070", lineWidth: 1 }
+            );
+            // webcam may be mirrored -> optionally use flipped UVs
+            drawWarpedMask(canvasCtx, dstLmks, /*useFlipped=*/MIRROR_VIDEO);
         }
     }
 
