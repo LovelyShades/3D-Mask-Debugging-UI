@@ -20,7 +20,7 @@ This project is shared under a **Custom No-Use License**:
 
 ## 👩‍💻 Authors
 
-Created and maintained by Alanna Matundan and Luke Lyons  
+Created and maintained by Alanna Matundan
 
 
 ---
