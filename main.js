@@ -52,7 +52,7 @@ let srcPts = null;                // 468 source points in pixels computed from U
         templateSize = { w: img.naturalWidth, h: img.naturalHeight };
         // build source pixel points from UVs (u,v in [0..1] -> pixels)
         srcPts = UV_COORDS.map(([u, v]) => ({
-            x: u * templateSize.w,
+            x: (1 - u) * templateSize.w,
             y: v * templateSize.h
         }));
         // (Optional) you can draw template for debugging if needed
