@@ -1,0 +1,62 @@
+<!-- Demo based on MediaPipe Face Landmarker. Apache 2.0 notice from original preserved. -->
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Cache-control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>Face Landmarker</title>
+
+    <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
+    <script defer src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+
+    <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+    <h1>Face landmark detection using the MediaPipe FaceLandmarker task</h1>
+
+    <section id="demos" class="invisible">
+        <h2>Demo: Detecting Images</h2>
+        <p><b>Click on an image below</b> to see the landmarks and warped mask.</p>
+
+        <!-- Mask upload -->
+        <div style="margin:12px 0;">
+            <label for="maskInput" style="font-weight:600;">Upload PNG mask (transparent):</label>
+            <input id="maskInput" type="file" accept="image/png" />
+            <span id="maskStatus" style="margin-left:8px; font-size:12px; opacity:.8;"></span>
+        </div>
+
+        <div class="detectOnClick">
+            <img src="https://storage.googleapis.com/mediapipe-assets/portrait.jpg" width="100%" crossorigin="anonymous"
+                title="Click to get detection!">
+        </div>
+        <div class="blend-shapes">
+            <ul class="blend-shapes-list" id="image-blend-shapes"></ul>
+        </div>
+
+        <h2>Demo: Webcam continuous face landmarks detection</h2>
+        <p>Click <b>enable webcam</b> and grant access.</p>
+
+        <div id="liveView" class="videoView">
+            <button id="webcamButton" class="mdc-button mdc-button--raised">
+                <span class="mdc-button__ripple"></span>
+                <span class="mdc-button__label">ENABLE WEBCAM</span>
+            </button>
+            <div style="position: relative;">
+                <video id="webcam" style="position: absolute; left: 0; top: 0;" autoplay playsinline></video>
+                <canvas class="output_canvas" id="output_canvas" style="position: absolute; left: 0; top: 0;"></canvas>
+            </div>
+        </div>
+
+        <div class="blend-shapes">
+            <ul class="blend-shapes-list" id="video-blend-shapes"></ul>
+        </div>
+    </section>
+
+    <script type="module" src="./main.js"></script>
+</body>
+
+</html>
