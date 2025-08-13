@@ -29,6 +29,12 @@ let templateImg = null;
 let templateSize = { w: 0, h: 0 };
 let srcPts = null;          // normal UV->px
 let srcPtsFlipped = null;   // flipped horizontally
+let showMesh = true; // default ON
+document.getElementById("meshToggleBtn").addEventListener("click", () => {
+    showMesh = !showMesh;
+    document.getElementById("meshToggleBtn").querySelector(".mdc-button__label").textContent =
+        showMesh ? "Hide Mesh" : "Show Mesh";
+});
 
 // ---------- load model ----------
 (async () => {
@@ -215,13 +221,15 @@ async function handleClick(event) {
 
     if (faceLandmarkerResult?.faceLandmarks) {
         for (const dstLmks of faceLandmarkerResult.faceLandmarks) {
-            drawingUtils.drawConnectors(
-                dstLmks,
-                FaceLandmarker.FACE_LANDMARKS_TESSELATION,
-                { color: "#C0C0C070", lineWidth: 1 }
-            );
-            // images are NOT mirrored -> use normal UVs
+            if (showMesh) {
+                drawingUtils.drawConnectors(
+                    dstLmks,
+                    FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+                    { color: "#C0C0C070", lineWidth: 1 }
+                );
+            }
             drawWarpedMask(ctx, dstLmks, /*useFlipped=*/false);
+
         }
     }
     drawBlendShapes(imageBlendShapes, faceLandmarkerResult?.faceBlendshapes || []);
@@ -286,13 +294,15 @@ async function predictWebcam() {
 
     if (results?.faceLandmarks) {
         for (const dstLmks of results.faceLandmarks) {
-            videoDrawingUtils.drawConnectors(
-                dstLmks,
-                FaceLandmarker.FACE_LANDMARKS_TESSELATION,
-                { color: "#C0C0C070", lineWidth: 1 }
-            );
-            // webcam may be mirrored -> optionally use flipped UVs
+            if (showMesh) {
+                videoDrawingUtils.drawConnectors(
+                    dstLmks,
+                    FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+                    { color: "#C0C0C070", lineWidth: 1 }
+                );
+            }
             drawWarpedMask(canvasCtx, dstLmks, /*useFlipped=*/MIRROR_VIDEO);
+
         }
     }
 
