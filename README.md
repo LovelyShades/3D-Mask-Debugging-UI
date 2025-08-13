@@ -25,4 +25,4 @@ Created and maintained by Alanna Matundan
 
 ---
 
-© 2025 Alanna Matundan & Luke Lyons. All rights reserved.
+© 2025 Alanna Matundan. All rights reserved.
