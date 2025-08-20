@@ -25,7 +25,7 @@ Includes a toggleable mesh wireframe and real-time blend shape scores for expres
 ![Toggle Mesh](Gifs/toggle_mesh.gif)  
 *Show/Hide landmark mesh overlay*
 
-![Use Mask](Gifs/use_mask.gif)  
+![Use Mask](Gifs/Use_mask.gif)  
 *Upload and apply a custom PNG mask*
 
 ![Webcam Mask](Gifs/webcam_mask.gif)  
