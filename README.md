@@ -75,6 +75,7 @@ uv_coords.js     # UV coordinates for mesh mapping
 mesh_map.jpg     # template reference for custom masks
 model.jpg        # sample image
 test_mask.png    # test mask for demo
+
 📚 What I Learned
 Applying UV + triangulation mapping for texture warping
 
