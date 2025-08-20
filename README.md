@@ -1,28 +1,104 @@
-# 💼 Project Showcase – 3D Mask Debugging UI
+# 🥽 FaceMask_Lab (Web Demo)
 
-This project is a **public showcase** of our work and technical skills. It is intended for educational, portfolio, and demonstration purposes only.
+[![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-yellow.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Web%20Browser-blue.svg)]()
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)]()
 
-## 🚫 Usage Restrictions
+A browser-based demo that overlays custom PNG masks on detected faces in **images** or a **live webcam feed**, using **MediaPipe Face Landmarker** + **TFJS FaceMesh** techniques.  
+Includes a toggleable mesh wireframe and real-time blend shape scores for expressions.  
 
-**Unauthorized commercial use, redistribution, or modification of this code is strictly prohibited.**  
-All rights are reserved to the original author.
-
-> 🔒 While the repository is public for hiring and educational review, the contents remain the intellectual property of Alanna Matundan & Luke Lyons. You may view the code, but not use it in your own projects unless explicit permission is granted.
-
-## 📄 License
-
-This project is shared under a **Custom No-Use License**:
-- ✅ You may view and reference the code.
-- ❌ You may not copy, reuse, or distribute it.
-- ❌ You may not use this project as part of your own work (academic, personal, or commercial).
-
-**If you're interested in using any part of this project or collaborating, feel free to contact me: rosealanna18@gmail.com **
-
-## 👩‍💻 Authors
-
-Created and maintained by Alanna Matundan
-
+> **Author:** Alanna Matundan  
+> **License:** Apache 2.0 — Portions © Google / MediaPipe  
 
 ---
 
-© 2025 Alanna Matundan. All rights reserved.
+## ✨ Features
+- 🖼️ Detect face landmarks on uploaded images  
+- 🎥 Real-time webcam face tracking  
+- 🎭 Upload custom transparent PNG masks  
+- 🕸️ Show/Hide landmark mesh overlay  
+- 📊 Display live blend shape expression values  
+
+---
+
+## 🧰 Tech Stack
+- **Language:** JavaScript (ES6+), HTML5, CSS3  
+- **Libraries:** MediaPipe Tasks Vision (`@mediapipe/tasks-vision@0.10.3`)  
+- **Rendering:** Canvas 2D API (with triangulated warping)  
+
+---
+
+## 🚀 Getting Started
+### Prerequisites
+- Modern browser with **WebGL** and **getUserMedia** support  
+- Local HTTP server (due to model + asset loading)  
+
+### Run Locally
+```bash
+
+# clone repo
+git clone https://github.com/yourname/FaceMask_Lab.git
+cd FaceMask_Lab
+
+# start local server (Python example)
+python -m http.server 8000
+Then open:
+👉 http://localhost:8000
+
+📖 Usage
+Upload PNG mask → use test_mask.png or create your own (transparent).
+
+Click on demo image (model.jpg) → detect + warp mask.
+
+Enable Webcam → toggle predictions in real time.
+
+Toggle Mesh → show or hide landmark wireframe.
+
+View Blend Shapes → see expression intensity scores.
+
+🖌️ Creating Custom Masks
+Use mesh_map.jpg as the UV reference template
+
+Align your design in Photoshop, GIMP, or Krita
+
+Export as PNG with transparency
+
+Upload via the file input
+
+🧱 Project Structure
+bash
+Copy
+Edit
+index.html       # main demo page
+main.js          # detection + rendering logic
+styles.css       # UI and layout styles
+triangulation.js # landmark triangulation indices
+uv_coords.js     # UV coordinates for mesh mapping
+mesh_map.jpg     # template reference for custom masks
+model.jpg        # sample image
+test_mask.png    # test mask for demo
+📚 What I Learned
+Applying UV + triangulation mapping for texture warping
+
+Using MediaPipe Face Landmarker with TFJS for browser apps
+
+Integrating webcam APIs (getUserMedia) safely
+
+Building modular, maintainable demo code with toggles and states
+
+Designing user-friendly controls (upload, mesh toggle, live preview)
+
+🛣️ Future Improvements
+Multi-face support
+
+More efficient rendering pipeline (WebGL / Three.js)
+
+AR-style effects (stickers, filters, masks)
+
+Save screenshots of masked faces
+
+Blend shape → avatar animation demo
+
+📜 License
+Licensed under the Apache License 2.0.
+Derived in part from MediaPipe Face Landmarker demos.
