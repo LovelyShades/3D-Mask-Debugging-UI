@@ -37,7 +37,7 @@ Includes a toggleable mesh wireframe and real-time blend shape scores for expres
 ```bash
 
 # clone repo
-git clone https://github.com/yourname/FaceMask_Lab.git
+git clone https://github.com/LovelyShades/FaceMask_Lab.git
 cd FaceMask_Lab
 
 # start local server (Python example)
