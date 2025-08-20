@@ -58,7 +58,7 @@ Then open:
 👉 http://localhost:8000
 
 📖 Usage
-Upload PNG mask → use test_mask.png or create your own (transparent).
+Upload PNG mask → use TESTING_IMAGES/test_mask.png or create your own (transparent over the TESTING_IMAGES/mesh_map.jpg).
 
 Click on demo image (model.jpg) → detect + warp mask.
 
