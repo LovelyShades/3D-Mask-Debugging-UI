@@ -66,9 +66,7 @@ Export as PNG with transparency
 Upload via the file input
 
 🧱 Project Structure
-bash
-Copy
-Edit
+
 index.html       # main demo page
 main.js          # detection + rendering logic
 styles.css       # UI and layout styles
