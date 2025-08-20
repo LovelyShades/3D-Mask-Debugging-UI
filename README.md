@@ -20,6 +20,18 @@ Includes a toggleable mesh wireframe and real-time blend shape scores for expres
 - 📊 Display live blend shape expression values  
 
 ---
+## 🎬 Showcase
+
+![Toggle Mesh](Gifs/toggle_mesh.gif)  
+*Show/Hide landmark mesh overlay*
+
+![Use Mask](Gifs/use_mask.gif)  
+*Upload and apply a custom PNG mask*
+
+![Webcam Mask](Gifs/webcam_mask.gif)  
+*Live mask overlay on webcam feed*
+
+---
 
 ## 🧰 Tech Stack
 - **Language:** JavaScript (ES6+), HTML5, CSS3  
