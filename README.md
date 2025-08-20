@@ -29,7 +29,7 @@ Includes a toggleable mesh wireframe and real-time blend shape scores for expres
 *Upload and apply a custom PNG mask*
 
 ![Webcam Mask](Gifs/webcam_mask.gif)  
-*Live mask overlay on webcam feed*
+*Live mask overlay on webcam feed & live predictions*
 
 ---
 
