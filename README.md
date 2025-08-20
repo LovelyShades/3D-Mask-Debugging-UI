@@ -23,7 +23,7 @@ Includes a toggleable mesh wireframe and real-time blend shape scores for expres
 ## 🎬 Showcase
 
 ![Toggle Mesh](Gifs/toggle_mesh.gif)  
-*Show/Hide landmark mesh overlay*
+*Show/Hide landmark mesh overlay & view predictions*
 
 ![Use Mask](Gifs/Use_mask.gif)  
 *Upload and apply a custom PNG mask*
