@@ -1,12 +1,12 @@
-// Apache 2.0 — based on MediaPipe Face Landmarker + TFJS FaceMesh demos.
+// Apache 2.0 — based on MediaPipe Face Landmarker demos.
 import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 import { TRIANGULATION } from "./triangulation.js";
 import { UV_COORDS } from "./uv_coords.js"; // 468 items of [u,v] in [0..1]
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js";
 
-const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+const { FaceLandmarker, FilesetResolver } = vision;
 
-const TEMPLATE_SRC = "./mesh_map.jpg";
-
+const TEMPLATE_SRC = "TESTING_IMAGES/mesh_map.jpg"; // optional
 const demosSection = document.getElementById("demos");
 const imageBlendShapes = document.getElementById("image-blend-shapes");
 const videoBlendShapes = document.getElementById("video-blend-shapes");
@@ -16,24 +16,25 @@ let runningMode = "IMAGE";
 let webcamRunning = false;
 const videoWidth = 480;
 
-// set true if your webcam/canvas is mirrored via CSS (e.g. rotateY(180deg))
-const MIRROR_VIDEO = true;
+// ---- flip controls ----
+const MIRROR_VIDEO = false;   // your webcam is not mirrored in CSS
+const MIRROR_IMAGE = false;   // sample image not mirrored
 
 // mask state
 const maskInput = document.getElementById("maskInput");
 const maskStatus = document.getElementById("maskStatus");
 let maskImg = null;
 
-// template state (fixed)
-let templateImg = null;
+// template (optional)
 let templateSize = { w: 0, h: 0 };
-let srcPts = null;          // normal UV->px
-let srcPtsFlipped = null;   // flipped horizontally
-let showMesh = true; // default ON
+
+// UI: mesh toggle -> wireframe UNDER the mask
+let showMesh = true;
 document.getElementById("meshToggleBtn").addEventListener("click", () => {
     showMesh = !showMesh;
-    document.getElementById("meshToggleBtn").querySelector(".mdc-button__label").textContent =
-        showMesh ? "Hide Mesh" : "Show Mesh";
+    document.getElementById("meshToggleBtn")
+        .querySelector(".mdc-button__label").textContent = showMesh ? "Hide Mesh" : "Show Mesh";
+    if (wireMesh) wireMesh.visible = showMesh; // webcam mesh updates live
 });
 
 // ---------- load model ----------
@@ -54,29 +55,16 @@ document.getElementById("meshToggleBtn").addEventListener("click", () => {
     demosSection.classList.remove("invisible");
 })();
 
-// ---------- load fixed template (mesh_map.jpg) and precompute src points ----------
+// ---------- optional template ----------
 (function preloadTemplate() {
     const img = new Image();
-    img.onload = () => {
-        templateImg = img;
-        templateSize = { w: img.naturalWidth, h: img.naturalHeight };
-
-        // normal UVs
-        srcPts = UV_COORDS.map(([u, v]) => ({
-            x: u * templateSize.w,
-            y: v * templateSize.h,
-        }));
-        // flipped horizontally (for mirrored video)
-        srcPtsFlipped = UV_COORDS.map(([u, v]) => ({
-            x: (1 - u) * templateSize.w,
-            y: v * templateSize.h,
-        }));
-    };
-    img.onerror = () => console.error("Failed to load template:", TEMPLATE_SRC);
+    img.onload = () => (templateSize = { w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => console.warn("Failed to load template:", TEMPLATE_SRC);
     img.src = TEMPLATE_SRC;
 })();
 
 // ---------- mask upload ----------
+let maskTexture = null; // shared for webcam
 if (maskInput) {
     maskInput.addEventListener("change", (e) => {
         const file = e.target.files?.[0];
@@ -86,6 +74,10 @@ if (maskInput) {
         img.onload = () => {
             maskImg = img;
             maskStatus.textContent = `Mask loaded (${img.naturalWidth}×${img.naturalHeight})`;
+            if (maskTexture) {
+                maskTexture.image = maskImg;
+                maskTexture.needsUpdate = true;
+            }
         };
         img.onerror = () => (maskStatus.textContent = "Failed to load PNG");
         img.src = url;
@@ -97,156 +89,188 @@ function lmkPx(lmk, W, H) {
     return { x: lmk.x * W, y: lmk.y * H };
 }
 
-// Affine transform from triangle (src->dst) into canvas setTransform
-function setTriTransform(ctx, src, dst) {
-    const [s0, s1, s2] = src,
-        [d0, d1, d2] = dst;
-    const denom =
-        s0.x * (s1.y - s2.y) +
-        s1.x * (s2.y - s0.y) +
-        s2.x * (s0.y - s1.y);
-    if (Math.abs(denom) < 1e-8) return false;
+function buildFaceGeometry() {
+    const geometry = new THREE.BufferGeometry();
+    const vertexCount = UV_COORDS.length;
 
-    const a11 =
-        (d0.x * (s1.y - s2.y) +
-            d1.x * (s2.y - s0.y) +
-            d2.x * (s0.y - s1.y)) /
-        denom;
-    const a12 =
-        (d0.x * (s2.x - s1.x) +
-            d1.x * (s0.x - s2.x) +
-            d2.x * (s1.x - s0.x)) /
-        denom;
-    const a13 =
-        (d0.x * (s1.x * s2.y - s2.x * s1.y) +
-            d1.x * (s2.x * s0.y - s0.x * s2.y) +
-            d2.x * (s0.x * s1.y - s1.x * s0.y)) /
-        denom;
+    const pos = new Float32Array(vertexCount * 3);
+    const positionAttr = new THREE.BufferAttribute(pos, 3);
+    geometry.setAttribute("position", positionAttr);
 
-    const a21 =
-        (d0.y * (s1.y - s2.y) +
-            d1.y * (s2.y - s0.y) +
-            d2.y * (s0.y - s1.y)) /
-        denom;
-    const a22 =
-        (d0.y * (s2.x - s1.x) +
-            d1.y * (s0.x - s2.x) +
-            d2.y * (s1.x - s0.x)) /
-        denom;
-    const a23 =
-        (d0.y * (s1.x * s2.y - s2.x * s1.y) +
-            d1.y * (s2.x * s0.y - s0.x * s2.y) +
-            d2.y * (s0.x * s1.y - s1.x * s0.y)) /
-        denom;
-
-    ctx.setTransform(a11, a21, a12, a22, a13, a23);
-    return true;
-}
-
-// Warp the mask across the whole face using TRIANGULATION
-function drawWarpedMask(ctx, dstLmks, useFlipped = false) {
-    if (!maskImg || !srcPts || !dstLmks) return;
-
-    const S = useFlipped ? srcPtsFlipped : srcPts;
-    const W = ctx.canvas.width,
-        H = ctx.canvas.height;
-
-    for (let i = 0; i < TRIANGULATION.length; i += 3) {
-        const i0 = TRIANGULATION[i],
-            i1 = TRIANGULATION[i + 1],
-            i2 = TRIANGULATION[i + 2];
-
-        const s0 = S[i0],
-            s1 = S[i1],
-            s2 = S[i2];
-
-        const d0 = lmkPx(dstLmks[i0], W, H);
-        const d1 = lmkPx(dstLmks[i1], W, H);
-        const d2 = lmkPx(dstLmks[i2], W, H);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(d0.x, d0.y);
-        ctx.lineTo(d1.x, d1.y);
-        ctx.lineTo(d2.x, d2.y);
-        ctx.closePath();
-        ctx.clip();
-
-        if (setTriTransform(ctx, [s0, s1, s2], [d0, d1, d2])) {
-            ctx.drawImage(maskImg, 0, 0, templateSize.w, templateSize.h);
-        }
-        ctx.restore();
+    const uv = new Float32Array(vertexCount * 2);
+    for (let i = 0; i < vertexCount; i++) {
+        const [u, v] = UV_COORDS[i];
+        uv[i * 2 + 0] = u;
+        uv[i * 2 + 1] = v;
     }
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    geometry.setIndex(TRIANGULATION);
+    return { geometry, positionAttr };
 }
 
 /* -------------------------
-   Demo 1: Click image detect
+   Demo 1: Click image detect — WebGL (seam-free)
 --------------------------*/
 const imageContainers = document.getElementsByClassName("detectOnClick");
 Array.from(imageContainers).forEach((container) => {
     const img = container.querySelector("img");
-    if (img) img.addEventListener("click", handleClick);
+    if (img) img.addEventListener("click", (evt) => handleClickWebGL(container, evt.target));
 });
 
-async function handleClick(event) {
-    if (!faceLandmarker) return;
+async function handleClickWebGL(container, imageEl) {
+    if (!faceLandmarker || !maskImg) return;
 
     if (runningMode === "VIDEO") {
         runningMode = "IMAGE";
         await faceLandmarker.setOptions({ runningMode });
     }
 
-    const parent = event.target.parentNode;
-    const allCanvas = parent.getElementsByClassName("canvas");
-    for (let i = allCanvas.length - 1; i >= 0; i--) {
-        allCanvas[i].parentNode.removeChild(allCanvas[i]);
+    // clear previous overlays
+    const allCanvas = container.getElementsByClassName("canvas");
+    for (let i = allCanvas.length - 1; i >= 0; i--) allCanvas[i].remove();
+
+    const result = faceLandmarker.detect(imageEl);
+    const lmks = result?.faceLandmarks?.[0];
+    if (!lmks) return;
+
+    container.style.position = "relative";
+
+    const overlay = document.createElement("canvas");
+    overlay.className = "canvas";
+    overlay.width = imageEl.naturalWidth;
+    overlay.height = imageEl.naturalHeight;
+    Object.assign(overlay.style, {
+        position: "absolute",
+        left: "0px",
+        top: "0px",
+        width: `${imageEl.width}px`,
+        height: `${imageEl.height}px`,
+        zIndex: "2",
+        pointerEvents: "none",
+    });
+    container.appendChild(overlay);
+
+    const renderer = new THREE.WebGLRenderer({ canvas: overlay, alpha: true, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setSize(overlay.width, overlay.height, false);
+    renderer.setClearColor(0x000000, 0);
+
+    const W = overlay.width, H = overlay.height;
+    // top = 0, bottom = H  → Y grows downward like 2D canvas
+    const camera = new THREE.OrthographicCamera(0, W, 0, H, -1000, 1000);
+
+    camera.position.z = 1;
+    camera.lookAt(0, 0, 0);
+
+    const scene = new THREE.Scene();
+
+    // mask texture (IMAGE path) — needs Y flip
+    const tex = new THREE.Texture(maskImg);
+    tex.flipY = false;
+    tex.needsUpdate = true;
+
+    const { geometry, positionAttr } = buildFaceGeometry();
+
+    // wireframe under mask
+    const wire = new THREE.Mesh(
+        geometry,
+        new THREE.MeshBasicMaterial({ color: 0xC0C0C0, wireframe: true, transparent: true, opacity: 0.7, depthTest: false })
+    );
+    wire.renderOrder = 0;
+    wire.visible = showMesh;
+    scene.add(wire);
+
+    // mask on top
+    const maskMesh = new THREE.Mesh(
+        geometry,
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })
+    );
+    maskMesh.renderOrder = 1;
+    scene.add(maskMesh);
+
+    // fill positions
+    const pos = positionAttr.array;
+    for (let i = 0; i < UV_COORDS.length; i++) {
+        const p = lmkPx(lmks[i], W, H);
+        const x = MIRROR_IMAGE ? (W - p.x) : p.x;
+        const y = p.y;
+        pos[i * 3 + 0] = x;
+        pos[i * 3 + 1] = y;
+        pos[i * 3 + 2] = 0;
     }
+    positionAttr.needsUpdate = true;
 
-    const faceLandmarkerResult = faceLandmarker.detect(event.target);
-
-    const canvas = document.createElement("canvas");
-    canvas.className = "canvas";
-    canvas.width = event.target.naturalWidth;
-    canvas.height = event.target.naturalHeight;
-    canvas.style.left = "0px";
-    canvas.style.top = "0px";
-    canvas.style.width = `${event.target.width}px`;
-    canvas.style.height = `${event.target.height}px`;
-    parent.appendChild(canvas);
-
-    const ctx = canvas.getContext("2d");
-    const drawingUtils = new DrawingUtils(ctx);
-
-    if (faceLandmarkerResult?.faceLandmarks) {
-        for (const dstLmks of faceLandmarkerResult.faceLandmarks) {
-            if (showMesh) {
-                drawingUtils.drawConnectors(
-                    dstLmks,
-                    FaceLandmarker.FACE_LANDMARKS_TESSELATION,
-                    { color: "#C0C0C070", lineWidth: 1 }
-                );
-            }
-            drawWarpedMask(ctx, dstLmks, /*useFlipped=*/false);
-
-        }
-    }
-    drawBlendShapes(imageBlendShapes, faceLandmarkerResult?.faceBlendshapes || []);
+    renderer.render(scene, camera);
+    drawBlendShapes(imageBlendShapes, result?.faceBlendshapes || []);
 }
 
 /* -------------------------
-   Demo 2: Webcam detect
+   Demo 2: Webcam detect — WebGL (seam-free)
 --------------------------*/
 const video = document.getElementById("webcam");
-const canvasElement = document.getElementById("output_canvas");
-const canvasCtx = canvasElement.getContext("2d");
-const videoDrawingUtils = new DrawingUtils(canvasCtx);
+const canvasElement = document.getElementById("output_canvas"); // WebGL canvas
 
+let threeReady = false;
+let renderer, scene, camera, mesh, wireMesh, positionAttr;
+
+function initThreeWebcam(width, height) {
+    if (threeReady) return;
+
+    renderer = new THREE.WebGLRenderer({ canvas: canvasElement, alpha: true, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setSize(width, height, false);
+    renderer.setClearColor(0x000000, 0);
+
+    camera = new THREE.OrthographicCamera(0, width, height, 0, -1000, 1000);
+    camera.position.z = 1;
+    camera.lookAt(0, 0, 0);
+
+    scene = new THREE.Scene();
+
+    // shared texture (WEBCAM path) — needs Y flip
+    maskTexture = new THREE.Texture(maskImg || document.createElement("canvas"));
+    maskTexture.flipY = false;
+    maskTexture.wrapS = THREE.RepeatWrapping;
+    maskTexture.repeat.x = -1;        // 🔁 horizontal flip
+    maskTexture.offset.x = 1;         // shift back into [0..1] after negative repeat
+    maskTexture.needsUpdate = true;
+
+    const built = buildFaceGeometry();
+    const geometry = built.geometry;
+    positionAttr = built.positionAttr;
+
+    wireMesh = new THREE.Mesh(
+        geometry,
+        new THREE.MeshBasicMaterial({ color: 0xC0C0C0, wireframe: true, transparent: true, opacity: 0.7, depthTest: false })
+    );
+    wireMesh.renderOrder = 0;
+    wireMesh.visible = showMesh;
+    scene.add(wireMesh);
+
+    mesh = new THREE.Mesh(
+        geometry,
+        new THREE.MeshBasicMaterial({ map: maskTexture, transparent: true, depthTest: false, depthWrite: false })
+    );
+    mesh.renderOrder = 1;
+    scene.add(mesh);
+
+    threeReady = true;
+}
+
+function updateThreeSize(width, height) {
+    if (!threeReady) return;
+    renderer.setSize(width, height, false);
+    camera.left = 0;
+    camera.right = width;
+    camera.top = 0;
+    camera.bottom = height;
+    camera.updateProjectionMatrix();
+}
+
+// webcam controls
 function hasGetUserMedia() {
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
-
 if (hasGetUserMedia()) {
     document.getElementById("webcamButton").addEventListener("click", enableCam);
 } else {
@@ -257,9 +281,8 @@ function enableCam() {
     if (!faceLandmarker) return;
 
     webcamRunning = !webcamRunning;
-    document.getElementById("webcamButton").innerText = webcamRunning
-        ? "DISABLE PREDICTIONS"
-        : "ENABLE WEBCAM";
+    document.getElementById("webcamButton").innerText = webcamRunning ? "DISABLE PREDICTIONS" : "ENABLE WEBCAM";
+    if (!webcamRunning) return;
 
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
         video.srcObject = stream;
@@ -271,13 +294,19 @@ let lastVideoTime = -1;
 let results;
 
 async function predictWebcam() {
-    const ratio = video.videoHeight / video.videoWidth;
+    const ratio = video.videoHeight / Math.max(1, video.videoWidth);
     video.style.width = videoWidth + "px";
     video.style.height = videoWidth * ratio + "px";
     canvasElement.style.width = videoWidth + "px";
     canvasElement.style.height = videoWidth * ratio + "px";
-    canvasElement.width = video.videoWidth;
-    canvasElement.height = video.videoHeight;
+
+    const W = video.videoWidth || canvasElement.width || 640;
+    const H = video.videoHeight || canvasElement.height || 480;
+    canvasElement.width = W;
+    canvasElement.height = H;
+
+    initThreeWebcam(W, H);
+    updateThreeSize(W, H);
 
     if (runningMode === "IMAGE") {
         runningMode = "VIDEO";
@@ -290,26 +319,44 @@ async function predictWebcam() {
         results = faceLandmarker.detectForVideo(video, startTimeMs);
     }
 
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    if (results?.faceLandmarks?.length) {
+        const dstLmks = results.faceLandmarks[0];
+        const pos = positionAttr.array;
 
-    if (results?.faceLandmarks) {
-        for (const dstLmks of results.faceLandmarks) {
-            if (showMesh) {
-                videoDrawingUtils.drawConnectors(
-                    dstLmks,
-                    FaceLandmarker.FACE_LANDMARKS_TESSELATION,
-                    { color: "#C0C0C070", lineWidth: 1 }
-                );
+        for (let i = 0; i < UV_COORDS.length; i++) {
+            const p = lmkPx(dstLmks[i], W, H);
+            const x = MIRROR_VIDEO ? (W - p.x) : p.x;
+            const y = p.y;
+            pos[i * 3 + 0] = x;
+            pos[i * 3 + 1] = y;
+            pos[i * 3 + 2] = 0;
+        }
+        positionAttr.needsUpdate = true;
+
+        if (wireMesh) wireMesh.visible = showMesh;
+
+        if (maskImg && maskTexture.image !== maskImg) {
+            maskTexture.image = maskImg;
+            maskTexture.needsUpdate = true;
+            if (mesh && mesh.material) {
+                mesh.material.map = maskTexture;
+                mesh.material.opacity = 1;
+                mesh.material.transparent = true;
+                mesh.material.depthTest = false;
+                mesh.material.depthWrite = false;
+                mesh.material.needsUpdate = true;
             }
-            drawWarpedMask(canvasCtx, dstLmks, /*useFlipped=*/MIRROR_VIDEO);
-
         }
     }
+
+    // ✅ you were missing this — actually draw the frame
+    renderer.render(scene, camera);
 
     drawBlendShapes(videoBlendShapes, results?.faceBlendshapes || []);
     if (webcamRunning === true) window.requestAnimationFrame(predictWebcam);
 }
 
+// ---------- UI helpers (make sure this is NOT nested) ----------
 function drawBlendShapes(el, blendShapes) {
     if (!blendShapes?.length) return;
     let html = "";
