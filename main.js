@@ -20,10 +20,27 @@ const videoWidth = 480;
 const MIRROR_VIDEO = false;   // your webcam is not mirrored in CSS
 const MIRROR_IMAGE = false;   // sample image not mirrored
 
-// mask state
+// mask state + UI
 const maskInput = document.getElementById("maskInput");
 const maskStatus = document.getElementById("maskStatus");
+const clearMaskBtnMaybe = document.getElementById("clearMaskBtn"); // may or may not exist in your HTML
+let clearBtn = clearMaskBtnMaybe || null;
 let maskImg = null;
+
+// If the Clear button isn't present in HTML, create it next to the input (keeps your CSS working)
+if (!clearBtn && maskInput) {
+    clearBtn = document.createElement("button");
+    clearBtn.id = "clearMaskBtn";
+    clearBtn.className = "mdc-button mdc-button--outlined";
+    clearBtn.style.display = "none";
+    clearBtn.style.marginLeft = "8px";
+    clearBtn.innerHTML = `<span class="mdc-button__ripple"></span><span class="mdc-button__label">Clear Mask</span>`;
+    maskInput.insertAdjacentElement("afterend", clearBtn);
+}
+// Wire it: reload the page when clearing
+if (clearBtn) {
+    clearBtn.addEventListener("click", () => window.location.reload());
+}
 
 // template (optional)
 let templateSize = { w: 0, h: 0 };
@@ -74,15 +91,43 @@ if (maskInput) {
         img.onload = () => {
             maskImg = img;
             maskStatus.textContent = `Mask loaded (${img.naturalWidth}×${img.naturalHeight})`;
+
+            // Refresh webcam texture immediately if running/initialized
             if (maskTexture) {
                 maskTexture.image = maskImg;
+                maskTexture.wrapS = THREE.RepeatWrapping;
+                maskTexture.repeat.x = -1; // horizontal flip so text reads correctly in webcam
+                maskTexture.offset.x = 1;
                 maskTexture.needsUpdate = true;
+            }
+            // If a webcam mesh exists, make sure it becomes visible
+            if (mesh) mesh.visible = true;
+
+            // Clean old image overlays so the next click is clean
+            document.querySelectorAll(".detectOnClick .canvas").forEach((c) => c.remove());
+
+            // ---- Turn the upload control into "Clear mask" in-place ----
+            const labelEl = document.querySelector('label[for="maskInput"]');
+            if (labelEl) {
+                // keep the label (so it looks the same), but stop its default behavior
+                labelEl.addEventListener("click", (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    window.location.reload(); // simple reset
+                }, { once: true }); // only needs to bind once after load
+
+                // update label text
+                labelEl.textContent = "Clear mask";
+
+                // hide the actual file input so clicks won't open the picker
+                maskInput.style.display = "none";
             }
         };
         img.onerror = () => (maskStatus.textContent = "Failed to load PNG");
         img.src = url;
     });
 }
+
 
 // ---------- helpers ----------
 function lmkPx(lmk, W, H) {
@@ -118,7 +163,7 @@ Array.from(imageContainers).forEach((container) => {
 });
 
 async function handleClickWebGL(container, imageEl) {
-    if (!faceLandmarker || !maskImg) return;
+    if (!faceLandmarker) return; // need model to get landmarks
 
     if (runningMode === "VIDEO") {
         runningMode = "IMAGE";
@@ -156,47 +201,47 @@ async function handleClickWebGL(container, imageEl) {
     renderer.setClearColor(0x000000, 0);
 
     const W = overlay.width, H = overlay.height;
-    // top = 0, bottom = H  → Y grows downward like 2D canvas
+    // Y grows downward in pixel space
     const camera = new THREE.OrthographicCamera(0, W, 0, H, -1000, 1000);
-
-    camera.position.z = 1;
-    camera.lookAt(0, 0, 0);
+    camera.position.z = 1; camera.lookAt(0, 0, 0);
 
     const scene = new THREE.Scene();
-
-    // mask texture (IMAGE path) — needs Y flip
-    const tex = new THREE.Texture(maskImg);
-    tex.flipY = false;
-    tex.needsUpdate = true;
-
     const { geometry, positionAttr } = buildFaceGeometry();
 
-    // wireframe under mask
+    // 1) Wireframe UNDER mask
     const wire = new THREE.Mesh(
         geometry,
-        new THREE.MeshBasicMaterial({ color: 0xC0C0C0, wireframe: true, transparent: true, opacity: 0.7, depthTest: false })
+        new THREE.MeshBasicMaterial({
+            color: 0xC0C0C0, wireframe: true, transparent: true, opacity: 0.7, depthTest: false
+        })
     );
     wire.renderOrder = 0;
     wire.visible = showMesh;
     scene.add(wire);
 
-    // mask on top
-    const maskMesh = new THREE.Mesh(
-        geometry,
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })
-    );
-    maskMesh.renderOrder = 1;
-    scene.add(maskMesh);
+    // 2) Mask ON TOP (only if a mask exists)
+    if (maskImg) {
+        const tex = new THREE.Texture(maskImg);
+        tex.flipY = false; // correct vertical for image path
+        // If your image-click demo needs horizontal flip too, uncomment next 3 lines:
+        // tex.wrapS = THREE.RepeatWrapping; tex.repeat.x = -1; tex.offset.x = 1;
+        tex.needsUpdate = true;
 
-    // fill positions
+        const maskMesh = new THREE.Mesh(
+            geometry,
+            new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })
+        );
+        maskMesh.renderOrder = 1;
+        scene.add(maskMesh);
+    }
+
+    // Fill positions
     const pos = positionAttr.array;
     for (let i = 0; i < UV_COORDS.length; i++) {
         const p = lmkPx(lmks[i], W, H);
         const x = MIRROR_IMAGE ? (W - p.x) : p.x;
         const y = p.y;
-        pos[i * 3 + 0] = x;
-        pos[i * 3 + 1] = y;
-        pos[i * 3 + 2] = 0;
+        pos[i * 3 + 0] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = 0;
     }
     positionAttr.needsUpdate = true;
 
@@ -221,18 +266,18 @@ function initThreeWebcam(width, height) {
     renderer.setSize(width, height, false);
     renderer.setClearColor(0x000000, 0);
 
-    camera = new THREE.OrthographicCamera(0, width, height, 0, -1000, 1000);
-    camera.position.z = 1;
-    camera.lookAt(0, 0, 0);
+    // Y grows downward like 2D canvas (same as image path)
+    camera = new THREE.OrthographicCamera(0, width, 0, height, -1000, 1000);
+    camera.position.z = 1; camera.lookAt(0, 0, 0);
 
     scene = new THREE.Scene();
 
-    // shared texture (WEBCAM path) — needs Y flip
+    // shared texture (WEBCAM path)
     maskTexture = new THREE.Texture(maskImg || document.createElement("canvas"));
-    maskTexture.flipY = false;
+    maskTexture.flipY = false; // vertical orientation for webcam
     maskTexture.wrapS = THREE.RepeatWrapping;
-    maskTexture.repeat.x = -1;        // 🔁 horizontal flip
-    maskTexture.offset.x = 1;         // shift back into [0..1] after negative repeat
+    maskTexture.repeat.x = -1; // horizontal flip so text reads correctly
+    maskTexture.offset.x = 1;
     maskTexture.needsUpdate = true;
 
     const built = buildFaceGeometry();
@@ -241,7 +286,9 @@ function initThreeWebcam(width, height) {
 
     wireMesh = new THREE.Mesh(
         geometry,
-        new THREE.MeshBasicMaterial({ color: 0xC0C0C0, wireframe: true, transparent: true, opacity: 0.7, depthTest: false })
+        new THREE.MeshBasicMaterial({
+            color: 0xC0C0C0, wireframe: true, transparent: true, opacity: 0.7, depthTest: false
+        })
     );
     wireMesh.renderOrder = 0;
     wireMesh.visible = showMesh;
@@ -249,9 +296,12 @@ function initThreeWebcam(width, height) {
 
     mesh = new THREE.Mesh(
         geometry,
-        new THREE.MeshBasicMaterial({ map: maskTexture, transparent: true, depthTest: false, depthWrite: false })
+        new THREE.MeshBasicMaterial({
+            map: maskTexture, transparent: true, depthTest: false, depthWrite: false
+        })
     );
     mesh.renderOrder = 1;
+    mesh.visible = !!maskImg; // only show if a mask already exists
     scene.add(mesh);
 
     threeReady = true;
@@ -335,21 +385,27 @@ async function predictWebcam() {
 
         if (wireMesh) wireMesh.visible = showMesh;
 
+        // hot-swap mask if uploaded during session
         if (maskImg && maskTexture.image !== maskImg) {
             maskTexture.image = maskImg;
+            maskTexture.wrapS = THREE.RepeatWrapping;
+            maskTexture.repeat.x = -1;
+            maskTexture.offset.x = 1;
             maskTexture.needsUpdate = true;
+
             if (mesh && mesh.material) {
                 mesh.material.map = maskTexture;
-                mesh.material.opacity = 1;
                 mesh.material.transparent = true;
                 mesh.material.depthTest = false;
                 mesh.material.depthWrite = false;
                 mesh.material.needsUpdate = true;
             }
         }
+
+        // show mask iff a mask image exists
+        if (mesh) mesh.visible = !!maskImg;
     }
 
-    // ✅ you were missing this — actually draw the frame
     renderer.render(scene, camera);
 
     drawBlendShapes(videoBlendShapes, results?.faceBlendshapes || []);
