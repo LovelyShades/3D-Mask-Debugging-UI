@@ -23,13 +23,13 @@ Includes a toggleable mesh wireframe and real-time blend shape scores for expres
 ## 🎬 Showcase
 
 ![Toggle Mesh](Gifs/toggle_mesh.gif)  
-*Show/Hide landmark mesh overlay*
+*Show/Hide landmark mesh overlay & view predictions*
 
-![Use Mask](Gifs/use_mask.gif)  
+![Use Mask](Gifs/Use_mask.gif)  
 *Upload and apply a custom PNG mask*
 
 ![Webcam Mask](Gifs/webcam_mask.gif)  
-*Live mask overlay on webcam feed*
+*Live mask overlay on webcam feed & live predictions*
 
 ---
 
@@ -49,7 +49,7 @@ Includes a toggleable mesh wireframe and real-time blend shape scores for expres
 ```bash
 
 # clone repo
-git clone https://github.com/LovelyShades/FaceMask_Lab.git
+git clone https://github.com/LovelyShades/Face_Mask_Lab.git
 cd FaceMask_Lab
 
 # start local server (Python example)
@@ -58,7 +58,7 @@ Then open:
 👉 http://localhost:8000
 
 📖 Usage
-Upload PNG mask → use test_mask.png or create your own (transparent).
+Upload PNG mask → use TESTING_IMAGES/test_mask.png or create your own (transparent over the TESTING_IMAGES/mesh_map.jpg).
 
 Click on demo image (model.jpg) → detect + warp mask.
 
